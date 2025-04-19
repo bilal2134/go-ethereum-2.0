@@ -74,15 +74,39 @@ func calculateClockEntropy(clocks []*VectorClock, idx int) float64 {
 	return float64(diff) / float64(len(clocks)-1)
 }
 
-// ResolveMultiEntityConflict resolves a conflict among multiple entities probabilistically, minimizing divergence.
+// ResolveMultiEntityConflict resolves a conflict among multiple entities by choosing the lowest entropy (least divergence).
+// If multiple entities tie, uses vector-clock causal ordering to pick the earliest.
 func ResolveMultiEntityConflict(conflict *ConflictWithClock) string {
-	maxEntropy := -1.0
-	winnerIdx := 0
-	for i, entropy := range conflict.Entropies {
-		if entropy > maxEntropy {
-			maxEntropy = entropy
-			winnerIdx = i
+	// Find minimum entropy
+	minE := conflict.Entropies[0]
+	for _, e := range conflict.Entropies[1:] {
+		if e < minE {
+			minE = e
 		}
 	}
-	return conflict.Entities[winnerIdx]
+	// Collect candidates with min entropy
+	candidates := []int{}
+	for i, e := range conflict.Entropies {
+		if e == minE {
+			candidates = append(candidates, i)
+		}
+	}
+	// If only one candidate, choose it
+	if len(candidates) == 1 {
+		return conflict.Entities[candidates[0]]
+	}
+	// If two, use vector clock comparison
+	// Compare each pair; pick entity whose clock is causally earlier
+	best := candidates[0]
+	for _, idx := range candidates[1:] {
+		cmp := conflict.Clocks[best].Compare(conflict.Clocks[idx])
+		if cmp == 1 {
+			// current best is later than idx, pick idx
+			best = idx
+		}
+	}
+	return conflict.Entities[best]
 }
+
+// ResolveConflictWithClock is an alias to ResolveMultiEntityConflict.
+var ResolveConflictWithClock = ResolveMultiEntityConflict

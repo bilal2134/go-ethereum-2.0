@@ -1,0 +1,15 @@
+{
+  "Index": 1,
+  "Timestamp": "2025-04-19T12:03:51.231627642+05:00",
+  "PrevHash": "252d7db3a94eaedbf77212200b5edd427676aa236dc0b8552f9ac8bc798bb121",
+  "Transactions": [
+    "123"
+  ],
+  "Accumulator": "pmWkWSBCL51Bfkhn79xPuKBKHz//H6B+mY6G9/eieuM=",
+  "MultiMerkle": [
+    "pmWkWSBCL51Bfkhn79xPuKBKHz//H6B+mY6G9/eieuM=",
+    "oeOzCfm/Q+vpQGK1qsfK4TCdDFsvyTrJNg7Othgwtec="
+  ],
+  "Entropy": 0.2549019607843137,
+  "Hash": "a1e3b309f9bf43ebe94062b5aac7cae1309d0c5b2fc93ac9360eceb61830b5e7"
+}

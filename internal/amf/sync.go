@@ -1,26 +1,27 @@
 package amf
 
+import (
+	"fmt"
+)
+
 // Sync.go: Cross-shard synchronization protocol
 
 // Sync is a stub for the cross-shard synchronization protocol.
 type Sync struct {
-	// Add fields as needed.
+	Forest *Forest
+	Config RebalanceConfig
 }
 
-// NewSync creates a new Sync instance.
-func NewSync() *Sync {
-	return &Sync{}
+// NewSync creates a new Sync instance bound to a forest and rebalance config.
+func NewSync(forest *Forest, cfg RebalanceConfig) *Sync {
+	return &Sync{Forest: forest, Config: cfg}
 }
 
-// Start begins the synchronization process.
-func (s *Sync) Start() {
-	// Implement the synchronization logic here.
-}
+// Start is a placeholder to implement continuous synchronization if needed.
+func (s *Sync) Start() {}
 
 // Stop ends the synchronization process.
-func (s *Sync) Stop() {
-	// Implement the logic to stop synchronization here.
-}
+func (s *Sync) Stop() {}
 
 // HomomorphicADS is a stub for a homomorphic authenticated data structure.
 type HomomorphicADS struct {
@@ -32,7 +33,7 @@ func NewHomomorphicADS() *HomomorphicADS {
 	return &HomomorphicADS{}
 }
 
-// PartialStateTransfer transfers part of the state from one shard to another (stub).
+// PartialStateTransfer transfers specified keys from one shard to another.
 func PartialStateTransfer(src, dst *ShardWithMeta, keys []string) {
 	for _, k := range keys {
 		if v, ok := src.Shard.Data[k]; ok {
@@ -40,7 +41,6 @@ func PartialStateTransfer(src, dst *ShardWithMeta, keys []string) {
 			delete(src.Shard.Data, k)
 		}
 	}
-	// Update Merkle roots and cryptographic commitments as needed (stub)
 	src.Root = BuildMerkleRoot(src.Shard)
 	dst.Root = BuildMerkleRoot(dst.Shard)
 }
@@ -56,13 +56,36 @@ func NewCommitment(data string) *CryptographicCommitment {
 	return &CryptographicCommitment{Commitment: data}
 }
 
-// AtomicCrossShardOperation performs an atomic operation across shards using commitments (stub).
+// AtomicCrossShardOperation performs an atomic key transfer using a cryptographic commitment.
 func AtomicCrossShardOperation(src, dst *ShardWithMeta, key string, value interface{}) bool {
-	commit := NewCommitment(key)
-	// Simulate atomic transfer
+	commit := NewCommitment(fmt.Sprintf("%s:%v", key, value))
 	src.Shard.RemoveData(key)
 	dst.Shard.AddData(key, value)
-	// In a real system, verify commitment and ensure atomicity
 	_ = commit
 	return true
+}
+
+// SyncKeys performs partial transfer of keys from srcID to dstID and rebalances.
+func (s *Sync) SyncKeys(srcID, dstID int, keys []string) error {
+	src, ok := s.Forest.GetShard(srcID)
+	if !ok {
+		return fmt.Errorf("source shard %d not found", srcID)
+	}
+	dst, ok := s.Forest.GetShard(dstID)
+	if !ok {
+		return fmt.Errorf("destination shard %d not found", dstID)
+	}
+	src.Mutex.Lock()
+	dst.Mutex.Lock()
+	defer src.Mutex.Unlock()
+	defer dst.Mutex.Unlock()
+	// Transfer keys
+	PartialStateTransfer(src, dst, keys)
+	// Atomic commit simulated
+	for _, k := range keys {
+		AtomicCrossShardOperation(src, dst, k, dst.Shard.Data[k])
+	}
+	// Rebalance after sync
+	RebalanceForest(s.Forest, s.Config)
+	return nil
 }

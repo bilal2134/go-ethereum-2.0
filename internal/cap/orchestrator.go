@@ -6,7 +6,6 @@ package cap
 import (
 	"context"
 	"log"
-	"math/rand"
 	"time"
 )
 
@@ -14,6 +13,12 @@ import (
 type Orchestrator struct {
 	consistencyLevel int
 	partitionPred    PartitionPredictor
+}
+
+// PartitionPredictor predicts network partition probability.
+type PartitionPredictor interface {
+	// Predict returns estimated partition probability (0.0-1.0).
+	Predict(ctx context.Context) (float64, error)
 }
 
 // NewOrchestrator creates a new Orchestrator.
@@ -26,29 +31,29 @@ func NewOrchestrator(consistencyLevel int, partitionPred PartitionPredictor) *Or
 
 // AdjustConsistency dynamically adjusts the consistency level based on partition probability.
 func (o *Orchestrator) AdjustConsistency(ctx context.Context) {
-	// Simulate getting partition probability
-	_ = o.partitionPred.Predict(ctx)
-	// Example: Randomly adjust for demonstration (replace with real logic)
-	if rand.Float64() > 0.5 {
-		log.Println("[Orchestrator] Switching to Strong Consistency")
-		o.consistencyLevel = 0 // Strong
-	} else {
-		log.Println("[Orchestrator] Switching to Eventual Consistency")
-		o.consistencyLevel = 1 // Eventual
+	// Get partition probability
+	prob, err := o.partitionPred.Predict(ctx)
+	if err != nil {
+		log.Printf("[Orchestrator] Partition prediction error: %v", err)
+		return
 	}
+	if prob > 0.5 {
+		log.Println("[Orchestrator] Partition risk high, using Strong Consistency")
+		o.consistencyLevel = int(StrongConsistency)
+	} else {
+		log.Println("[Orchestrator] Partition risk low, using Eventual Consistency")
+		o.consistencyLevel = int(EventualConsistency)
+	}
+}
+
+// CurrentLevel returns the orchestrator's current consistency level.
+func (o *Orchestrator) CurrentLevel() ConsistencyLevel {
+	return ConsistencyLevel(o.consistencyLevel)
 }
 
 // PredictPartition triggers partition prediction and logs the result.
 func (o *Orchestrator) PredictPartition(ctx context.Context) {
-	err := o.partitionPred.Predict(ctx)
-	if err != nil {
-		log.Printf("[Orchestrator] Partition prediction error: %v", err)
-	}
-}
-
-// PartitionPredictor is an interface for predicting network partitions.
-type PartitionPredictor interface {
-	Predict(ctx context.Context) error
+	_, _ = o.partitionPred.Predict(ctx)
 }
 
 // NetworkTelemetry holds network metrics for partition prediction.
@@ -65,8 +70,7 @@ type SimplePartitionPredictor struct {
 }
 
 // Predict estimates the probability of a network partition.
-func (s *SimplePartitionPredictor) Predict(ctx context.Context) error {
-	// Example: If latency or packet loss is high, partition probability increases
+func (s *SimplePartitionPredictor) Predict(ctx context.Context) (float64, error) {
 	prob := 0.0
 	if s.Telemetry.LatencyMs > 200 {
 		prob += 0.4
@@ -78,5 +82,5 @@ func (s *SimplePartitionPredictor) Predict(ctx context.Context) error {
 		prob += 0.2
 	}
 	log.Printf("[PartitionPredictor] Partition probability: %.2f", prob)
-	return nil
+	return prob, nil
 }

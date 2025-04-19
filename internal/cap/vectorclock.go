@@ -79,3 +79,14 @@ func (vc *VectorClock) Compare(other *VectorClock) int {
 	}
 	return 0
 }
+
+// Entries returns a snapshot of the clock map for external analysis.
+func (vc *VectorClock) Entries() map[string]int {
+	vc.mu.Lock()
+	defer vc.mu.Unlock()
+	out := make(map[string]int, len(vc.clock))
+	for k, v := range vc.clock {
+		out[k] = v
+	}
+	return out
+}

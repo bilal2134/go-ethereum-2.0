@@ -91,10 +91,19 @@ func CompressProof(proof [][]byte) string {
 	return hex.EncodeToString(proof[0])
 }
 
-// ProbabilisticProofCompression compresses a Merkle proof probabilistically (stub).
+// ProbabilisticProofCompression compresses a Merkle proof by XOR-folding all proof hashes.
 func ProbabilisticProofCompression(proof [][]byte) string {
-	// TODO: Implement succinct encoding or hash folding for proof compression
-	return CompressProof(proof) // Placeholder: use basic compression for now
+	if len(proof) == 0 {
+		return ""
+	}
+	// Initialize compressed with zeroed length
+	compressed := make([]byte, len(proof[0]))
+	for _, p := range proof {
+		for i := range compressed {
+			compressed[i] ^= p[i]
+		}
+	}
+	return hex.EncodeToString(compressed)
 }
 
 // AMQFilter is an interface for Approximate Membership Query filters (e.g., Bloom filter).
@@ -103,13 +112,15 @@ type AMQFilter interface {
 	Contains(item string) bool
 }
 
-// GenerateAMQProof generates a proof using an AMQ filter (stub).
+// GenerateAMQProof checks approximate membership of the item via the filter.
 func GenerateAMQProof(filter AMQFilter, item string) bool {
 	return filter.Contains(item)
 }
 
-// AccumulatorProof uses a cryptographic accumulator for proof size reduction (stub).
+// AccumulatorProof verifies an item against a cryptographic accumulator.
 func AccumulatorProof(acc interface{}, item string) bool {
-	// TODO: Integrate with accumulator.go for real cryptographic accumulator
-	return true // Placeholder
+	if a, ok := acc.(*Accumulator); ok {
+		return a.Verify(item)
+	}
+	return false
 }

@@ -2,6 +2,7 @@ package cap
 
 import (
 	"context"
+	"log"
 	"time"
 )
 
@@ -24,8 +25,8 @@ type AdaptiveConsistency struct {
 
 // RetryPolicy defines the policy for retrying operations.
 type RetryPolicy struct {
-	maxRetries int
-	backoff    time.Duration
+	MaxRetries int
+	Backoff    time.Duration
 }
 
 // NewAdaptiveConsistency creates a new AdaptiveConsistency instance.
@@ -45,12 +46,12 @@ func (ac *AdaptiveConsistency) AdjustConsistency(ctx context.Context) {
 // ExecuteWithRetry executes an operation with retry logic.
 func (ac *AdaptiveConsistency) ExecuteWithRetry(ctx context.Context, operation func() error) error {
 	var err error
-	for i := 0; i < ac.retryPolicy.maxRetries; i++ {
+	for i := 0; i < ac.retryPolicy.MaxRetries; i++ {
 		err = operation()
 		if err == nil {
 			return nil
 		}
-		time.Sleep(ac.retryPolicy.backoff)
+		time.Sleep(ac.retryPolicy.Backoff)
 	}
 	return err
 }
@@ -71,11 +72,11 @@ func (ac *AdaptiveConsistency) UpdateTimeout(telemetry NetworkTelemetry) {
 func (ac *AdaptiveConsistency) UpdateRetryPolicy(telemetry NetworkTelemetry) {
 	// Example: Increase retries if packet loss is high
 	if telemetry.PacketLoss > 0.05 {
-		ac.retryPolicy.maxRetries = 5
-		ac.retryPolicy.backoff = 2 * time.Second
+		ac.retryPolicy.MaxRetries = 5
+		ac.retryPolicy.Backoff = 2 * time.Second
 	} else {
-		ac.retryPolicy.maxRetries = 3
-		ac.retryPolicy.backoff = 1 * time.Second
+		ac.retryPolicy.MaxRetries = 3
+		ac.retryPolicy.Backoff = 1 * time.Second
 	}
 }
 
@@ -84,4 +85,7 @@ func (ac *AdaptiveConsistency) Orchestrate(ctx context.Context, telemetry Networ
 	ac.UpdateTimeout(telemetry)
 	ac.UpdateRetryPolicy(telemetry)
 	orchestrator.AdjustConsistency(ctx)
+	// Log the updated settings
+	log.Printf("[AdaptiveConsistency] timeout=%v, maxRetries=%d, consistency=%v",
+		ac.timeout, ac.retryPolicy.MaxRetries, orchestrator.CurrentLevel())
 }

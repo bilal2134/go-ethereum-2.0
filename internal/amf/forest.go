@@ -1,6 +1,10 @@
 package amf
 
 import (
+	"crypto/sha256"
+	"encoding/json"
+	"fmt"
+	"sort"
 	"sync"
 )
 
@@ -43,10 +47,11 @@ func (f *Forest) AddRoot(root *Node) {
 	f.Roots = append(f.Roots, root)
 }
 
-// MergeNodes merges two nodes into a new node.
+// MergeNodes hashes two child nodes into a new parent node for Merkle integrity.
 func MergeNodes(left, right *Node) *Node {
-	// Implement the merging logic here.
-	return &Node{Left: left, Right: right}
+	combined := append(left.Hash, right.Hash...)
+	h := sha256.Sum256(combined)
+	return &Node{Hash: h[:], Left: left, Right: right}
 }
 
 // CreateShard creates and adds a new shard to the forest.
@@ -120,10 +125,42 @@ func (f *Forest) MergeShards(id1, id2, threshold int) (*ShardWithMeta, bool) {
 	return merged, true
 }
 
-// BuildMerkleRoot builds a Merkle root for a shard (stub).
+// BuildMerkleRoot computes the Merkle root over sorted shard data key/value pairs.
 func BuildMerkleRoot(shard *Shard) *Node {
-	// TODO: Implement Merkle root calculation for shard data
-	return &Node{Hash: []byte("root")} // Placeholder
+	// Collect and sort keys for deterministic order
+	keys := make([]string, 0, len(shard.Data))
+	for k := range shard.Data {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	// Create leaf nodes hashing key and JSON-encoded value
+	var nodes []*Node
+	for _, k := range keys {
+		v := shard.Data[k]
+		b, _ := json.Marshal(v)
+		leafHash := sha256.Sum256(append([]byte(k+":"), b...))
+		nodes = append(nodes, &Node{Hash: leafHash[:]})
+	}
+	if len(nodes) == 0 {
+		// Empty shard: return zero-hash node
+		empty := sha256.Sum256(nil)
+		return &Node{Hash: empty[:]}
+	}
+	// Build tree by merging pairs until one root remains
+	for len(nodes) > 1 {
+		var next []*Node
+		for i := 0; i < len(nodes); i += 2 {
+			if i+1 < len(nodes) {
+				next = append(next, MergeNodes(nodes[i], nodes[i+1]))
+			} else {
+				// Odd node: carry up
+				next = append(next, nodes[i])
+			}
+		}
+		nodes = next
+	}
+	return nodes[0]
 }
 
 // DiscoverShardIDs returns all shard IDs (logarithmic time).
@@ -148,4 +185,25 @@ func (f *Forest) ReconstructState() map[string]interface{} {
 		}
 	}
 	return state
+}
+
+// AddDataToShard inserts a key/value into the specified shard, updates load and Merkle root, then rebalances the forest.
+// Requires a RebalanceConfig to control split/merge thresholds.
+func (f *Forest) AddDataToShard(id int, key string, value interface{}, cfg RebalanceConfig) error {
+	f.mutex.RLock()
+	shardMeta, ok := f.Shards[id]
+	f.mutex.RUnlock()
+	if !ok {
+		return fmt.Errorf("shard %d not found", id)
+	}
+	shardMeta.Mutex.Lock()
+	defer shardMeta.Mutex.Unlock()
+	// Add data and update load
+	shardMeta.Shard.AddData(key, value)
+	shardMeta.Load++
+	// Recompute Merkle root
+	shardMeta.Root = BuildMerkleRoot(shardMeta.Shard)
+	// Trigger rebalance
+	RebalanceForest(f, cfg)
+	return nil
 }

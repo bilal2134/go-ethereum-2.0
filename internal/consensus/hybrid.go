@@ -8,6 +8,8 @@ import (
 	"math/big"
 	"sync"
 	"time"
+
+	"github.com/bilal2134/Blockchain_A3/internal/bft"
 )
 
 // HybridConsensus represents the hybrid consensus protocol.
@@ -36,24 +38,21 @@ func (hc *HybridConsensus) StartRound() {
 	defer hc.mu.Unlock()
 
 	hc.round++
-	hc.powRandom = hc.generatePoWRandomness()
-	hc.leader = hc.selectLeader()
+	// Generate PoW randomness
+	r, err := GenerateRandomness()
+	if err != nil {
+		panic(fmt.Sprintf("PoW randomness error: %v", err))
+	}
+	hc.powRandom = r
+	// Secure VRF-based leader selection
+	vrf, _ := bft.NewVRF()
+	proofOutput, _, _ := vrf.Evaluate(r.Bytes())
+	idx := new(big.Int).SetBytes(proofOutput)
+	hc.leader = hc.validators[int(idx.Mod(idx, big.NewInt(int64(len(hc.validators)))).Int64())]
+	// Note: VRF proof could be published alongside for verification
 	hc.dbftState = make(map[string]string)
 
 	fmt.Printf("Round %d started with leader %s and PoW randomness %s\n", hc.round, hc.leader, hc.powRandom.String())
-}
-
-// generatePoWRandomness generates randomness using Proof of Work.
-func (hc *HybridConsensus) generatePoWRandomness() *big.Int {
-	// Simulate PoW randomness generation
-	time.Sleep(1 * time.Second)
-	return big.NewInt(time.Now().UnixNano())
-}
-
-// selectLeader selects the leader for the current round based on PoW randomness.
-func (hc *HybridConsensus) selectLeader() string {
-	index := new(big.Int).Mod(hc.powRandom, big.NewInt(int64(len(hc.validators)))).Int64()
-	return hc.validators[index]
 }
 
 // ProposeBlock allows the leader to propose a new block.

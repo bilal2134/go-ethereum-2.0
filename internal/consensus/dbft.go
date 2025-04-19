@@ -6,6 +6,8 @@ package consensus
 import (
 	"fmt"
 	"sync"
+
+	"github.com/bilal2134/Blockchain_A3/internal/bft"
 )
 
 // dBFTState represents the state of a dBFT consensus round.
@@ -22,14 +24,16 @@ type dBFTConsensus struct {
 	Nodes        []string
 	AuthManager  *AuthManager
 	CurrentRound *dBFTState
+	repSystem    *bft.ReputationSystem
 }
 
-// NewdBFTConsensus creates a new dBFTConsensus instance.
-func NewdBFTConsensus(nodes []string, auth *AuthManager) *dBFTConsensus {
+// NewdBFTConsensus creates a new dBFTConsensus instance with reputation-based thresholding.
+func NewdBFTConsensus(nodes []string, auth *AuthManager, rep *bft.ReputationSystem) *dBFTConsensus {
 	return &dBFTConsensus{
 		Nodes:        nodes,
 		AuthManager:  auth,
 		CurrentRound: nil,
+		repSystem:    rep,
 	}
 }
 
@@ -75,8 +79,38 @@ func (d *dBFTConsensus) Commit() (bool, string) {
 			yesVotes++
 		}
 	}
-	threshold := len(d.Nodes)*2/3 + 1
+	// Dynamic threshold based on node reputations
+	// Base threshold is 2/3 of nodes +1, adjusted if average reputation is high
+	base := len(d.Nodes)*2/3 + 1
+	avgRep := 0
+	for _, id := range d.Nodes {
+		avgRep += d.repSystem.GetReputation(id)
+	}
+	if len(d.Nodes) > 0 {
+		avgRep = avgRep / len(d.Nodes)
+	}
+	// If average reputation > 5, tighten threshold to 3/4 of nodes
+	threshold := base
+	if avgRep > 5 {
+		threshold = len(d.Nodes)*3/4 + 1
+	}
 	if yesVotes >= threshold {
+		// Multi-layer defense before commit
+		// Prepare proofs
+		statement := d.CurrentRound.Proposal
+		// Zero-knowledge proof
+		zk := bft.GenerateZKProof(statement)
+		// VRF for randomness proof
+		vrfInst, _ := bft.NewVRF()
+		randProof, _, _ := vrfInst.Evaluate([]byte(statement))
+		// MPC collective proof
+		mpcRes := bft.RunMPC(d.Nodes, []byte(statement))
+		// Defense manager
+		dm := bft.NewDefenseManager(d.repSystem, vrfInst)
+		if !dm.EvaluateState(d.CurrentRound.Proposer, statement, zk, randProof, mpcRes) {
+			// Defense failed: abort commit
+			return false, ""
+		}
 		d.CurrentRound.Committed = true
 		return true, d.CurrentRound.Proposal
 	}
